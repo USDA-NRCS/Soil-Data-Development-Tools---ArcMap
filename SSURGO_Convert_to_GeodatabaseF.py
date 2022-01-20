@@ -2135,7 +2135,7 @@ def AppendFeatures(outputWS, AOI, mupolyList, mulineList, mupointList, sflineLis
             #PrintMsg(" \nMUPOLYGON imported only " + Number_Format(mupolyCnt, 0, True) + " polygons, should be " + Number_Format(featCnt[0], 0, True), 1)
 
             # Add spatial index
-            arcpy.AddSpatialIndex_management (os.path.join(outputWS, "MUPOLYGON"))
+            arcpy.AddSpatialIndex_management(os.path.join(outputWS, "MUPOLYGON"))
             arcpy.AddIndex_management(os.path.join(outputWS, "MUPOLYGON"), "AREASYMBOL", "Indx_MupolyAreasymbol")
 
         #PrintMsg(" \nSkipping import for other featureclasses until problem with shapefile primary key is fixed", 0)
@@ -2152,7 +2152,7 @@ def AppendFeatures(outputWS, AOI, mupolyList, mulineList, mupointList, sflineLis
                 raise MyError, "MULINE short count"
 
             # Add spatial index
-            arcpy.AddSpatialIndex_management (os.path.join(outputWS, "MULINE"))
+            arcpy.AddSpatialIndex_management(os.path.join(outputWS, "MULINE"))
 
             # Add attribute indexes
             arcpy.AddIndex_management(os.path.join(outputWS, "MULINE"), "AREASYMBOL", "Indx_MulineAreasymbol")
@@ -2168,7 +2168,7 @@ def AppendFeatures(outputWS, AOI, mupolyList, mulineList, mupointList, sflineLis
                 raise MyError, "MUPOINT short count"
 
             # Add spatial index
-            arcpy.AddSpatialIndex_management (os.path.join(outputWS, "MUPOINT"))
+            arcpy.AddSpatialIndex_management(os.path.join(outputWS, "MUPOINT"))
 
             # Add attribute indexes
             arcpy.AddIndex_management(os.path.join(outputWS, "MUPOINT"), "AREASYMBOL", "Indx_MupointAreasymbol")
@@ -2183,8 +2183,11 @@ def AppendFeatures(outputWS, AOI, mupolyList, mulineList, mupointList, sflineLis
             if sflineCnt != featCnt[3]:
                 raise MyError, "FEATLINE short count"
 
-            # Add spatial index
-            arcpy.AddSpatialIndex_management (os.path.join(outputWS, "FEATLINE"))
+            # Add spatial index -- This errors out with CONUS dataset.
+            try:
+                arcpy.AddSpatialIndex_management(os.path.join(outputWS, "FEATLINE"))
+            except:
+                pass
 
             # Add attribute indexes
             arcpy.AddIndex_management(os.path.join(outputWS, "FEATLINE"), "AREASYMBOL", "Indx_SFLineAreasymbol")
@@ -2203,7 +2206,7 @@ def AppendFeatures(outputWS, AOI, mupolyList, mulineList, mupointList, sflineLis
                 raise MyError, "FEATPOINT short count"
 
             # Add spatial index
-            arcpy.AddSpatialIndex_management (os.path.join(outputWS, "FEATPOINT"))
+            arcpy.AddSpatialIndex_management(os.path.join(outputWS, "FEATPOINT"))
 
             # Add attribute indexes
             arcpy.AddIndex_management(os.path.join(outputWS, "FEATPOINT"), "AREASYMBOL", "Indx_SFPointAreasymbol")
@@ -2219,7 +2222,7 @@ def AppendFeatures(outputWS, AOI, mupolyList, mulineList, mupointList, sflineLis
                 raise MyError, "SAPOLYGON short count"
 
             # Add spatial index
-            arcpy.AddSpatialIndex_management (os.path.join(outputWS, "SAPOLYGON"))
+            arcpy.AddSpatialIndex_management(os.path.join(outputWS, "SAPOLYGON"))
 
 
         arcpy.RefreshCatalog(outputWS)
