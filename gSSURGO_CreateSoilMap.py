@@ -3,7 +3,7 @@
 # Creates a single Soil Data Viewer-type maps using gSSURGO and the sdv* attribute tables
 # Uses mdstatrship* tables and sdvattribute table to populate menu
 #
-# 2017-07-27
+# 2021-12-18 Steve Peaslee
 #
 # THINGS TO DO:
 #
@@ -622,8 +622,8 @@ def GetMapLegend(dAtts, bFuzzy):
                         dLabels[order] = rec.attrib
 
                     except:
-                        upperVal = int(rec.attrib["upper_value"])
-                        lowerVal = int(rec.attrib["lower_value"])
+                        upperVal = int(float(rec.attrib["upper_value"]))
+                        lowerVal = int(float(rec.attrib["lower_value"]))
                         rec.attrib["upper_value"] = upperVal
                         rec.attrib["lower_value"] = lowerVal
                         dLabels[order] = rec.attrib
@@ -3498,6 +3498,11 @@ def ReadTable(tbl, flds, wc, level, sql):
     # Other parameters will need to be passed or other functions created
     # to handle aggregation methods and tie-handling
     # ReadTable(dSDV["attributetablename"].upper(), flds, primSQL, level, sql)
+
+
+    x = """
+           SELECT COKEY, INTERPHRC, OBJECTID FROM COINTERP WHERE  rulekey IN (SELECT rulekey FROM distinterpmd WHERE rulename = 'DHS - Catastrophic Event, Large Animal Mortality, Burial' LIMIT 1);
+    """
     try:
         #bVerbose = True
 
@@ -9524,7 +9529,7 @@ def CreateSoilMap(inputLayer, sdvAtt, aggMethod, primCst, secCst, top, bot, begM
         scratchGDB = env.scratchGDB
 
         # Get dictionary of MUSYM values (optional function for use during development)
-        dSymbols = GetMapunitSymbols(gdb)
+        # dSymbols = GetMapunitSymbols(gdb)
 
 
         # If neccessary, create SDV_Symbology table for use by Convert Soil Map to Raster tool
@@ -10070,17 +10075,24 @@ def CreateSoilMap(inputLayer, sdvAtt, aggMethod, primCst, secCst, top, bot, begM
                                 distinterpTbl = os.path.join(gdb, "distinterpmd")
                                 ruleKey = GetRuleKey(distinterpTbl, dSDV["nasisrulename"])
 
-                                if ruleKey == None:
-                                    raise MyError, "Interp query failed to return key values for " + dSDV["nasisrulename"]
+                                #if ruleKey == None:
+                                #    raise MyError, "Interp query failed to return key values for " + dSDV["nasisrulename"]
+
+
 
                                 # Time for CONUS using different indexes and queries
                                 # ruledepth and mrulename 9:53 min
                                 # rulekey 4:09 min
                                 # ruledepth and mrulekey: 4:03 min
                                 #
-                                #interpSQL = "MRULENAME like '%" + dSDV["nasisrulename"] + "' and RULEDEPTH = 0"  # 9:53
+                                # interpSQL = "MRULENAME like '%" + dSDV["nasisrulename"] + "' and RULEDEPTH = 0"  # 9:53
                                 #interpSQL = "RULEDEPTH = 0 AND MRULEKEY = '" + ruleKey + "'"                      # 4:09
                                 interpSQL = "RULEKEY IN " + ruleKey                                        # 4:03
+
+                                #interpSQL = """SELECT T.cokey, T.interphr, T.interphrc FROM cointerp AS T WHERE rulekey IN (SELECT rulekey FROM distinterpmd WHERE rulename = '""" + dSDV["nasisrulename"] + "' LIMIT 1); """
+                                #interpSQL = """ WHERE rulekey IN (SELECT rulekey FROM distinterpmd WHERE rulename = '""" + dSDV["nasisrulename"] + "' LIMIT 1); """
+                                # interpSQL = """ rulekey IN (SELECT rulekey FROM distinterpmd WHERE rulename = '""" + dSDV["nasisrulename"] + "' LIMIT 1); """
+
 
                                 if primSQL is None:
                                     primSQL = interpSQL
@@ -10217,8 +10229,8 @@ def CreateSoilMap(inputLayer, sdvAtt, aggMethod, primCst, secCst, top, bot, begM
                                 cokeyList = list()  # Try using this to pare down the COINTERP table record count
                                 #cokeyList = dComponent.keys()  # Won't work. dComponent isn't populated yet
 
-                                #PrintMsg(" \nReading " + dSDV["attributetablename"] + " table, using " + ", ".join(flds), 1)
-                                #PrintMsg("Using primSQL: " + str(primSQL) + ";  " + " sql: " + str(sql), 1)
+                                # PrintMsg(" \nReading " + dSDV["attributetablename"] + " table, using " + ", ".join(flds), 1)
+                                # PrintMsg("Using primSQL: " + str(primSQL) + ";  " + " sql: " + str(sql), 1)
 
                                 dTbl = ReadTable(dSDV["attributetablename"].upper(), flds, primSQL, level, sql)
 
