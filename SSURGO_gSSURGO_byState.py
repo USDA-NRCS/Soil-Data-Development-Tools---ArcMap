@@ -646,6 +646,19 @@ def ClipMuPolygons(targetLayer, aoiLayer, outputClip, theTile):
     except:
         errorMsg()
 
+## ===================================================================================
+##def updateFeatureAlias(workspace,state):
+##
+##    fcList = ['FEATLINE','FEATPOINT','MULINE','MUPOINT','MUPOLYGON','SAPOLYGON']
+##
+##    for fc in fcList:
+##        fcPath = os.path.join(workspace,fc)
+##
+##        if arcpy.Exists(fcPath):
+##
+##            fields = arcpy.ListFields(fcPath)
+
+
 
 
 ## ===================================================================================
@@ -689,7 +702,20 @@ try:
         stAbbrev = stDict[theTile]
         tileInfo = (stAbbrev, theTile)
 
-        PrintMsg(" \n***************************************************************", 0)
+##        PrintMsg("----------------------------")
+##        PrintMsg(str(tileInfo))
+##        exit()
+
+        # Set the alias name to State-YYYYMM
+        # Set fiscal year according to the current month. If run during January thru September,
+        # set it to the current calendar year. Otherwise set it to the next calendar year.
+
+        d = datetime.date.today()
+        fy = d.strftime('%Y%m')
+
+        fcAlias = stAbbrev + "_" + str(fy)
+
+        PrintMsg("\n***************************************************************", 0)
         PrintMsg("Processing state: " + theTile, 0)
         PrintMsg("***************************************************************", 0)
 
@@ -755,7 +781,7 @@ try:
             bExported = SSURGO_Convert_to_GeodatabaseF.gSSURGO(inputFolder, surveyList, outputWS, theAOI, tileInfo, useTextFiles, False, valList)
 
             if bExported == False:
-                PrintMsg("\tAdding " + theTile + " to list if failed conversions", 0)
+                PrintMsg("\tAdding " + theTile + " to list of failed conversions", 0)
                 badExports.append(theTile)
                 err = "Passed - Export failed for " + theTile
 
@@ -782,6 +808,7 @@ try:
 
                 # End of state clip
 
+                #updateFeatureAlias(outputWS,stAbbrev)
                 goodExports.append(theTile)
 
         else:

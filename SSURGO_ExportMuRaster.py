@@ -183,10 +183,16 @@ def SnapToNLCD(inputFC, iRaster):
         theDesc = arcpy.Describe(inputFC)
         sr = theDesc.spatialReference
         inputSRName = sr.name
-        theUnits = sr.linearUnitName
-        pExtent = theDesc.extent
 
-        PrintMsg(" \nCoordinate system: " + inputSRName + " (" + theUnits.lower() + ")", 0)
+        if sr.type == 'Geographic':
+            PrintMsg(" \nInput coordinate system type: Geographic",1)
+            PrintMsg("\tUnable to align raster output with NLCD using this coordinate type",1)
+            return ""
+        else:
+            theUnits = sr.linearUnitName
+            PrintMsg(" \nCoordinate system: " + inputSRName + " (" + theUnits.lower() + ")")
+
+        pExtent = theDesc.extent
 
         if pExtent is None:
             raise MyError, "Failed to get extent from " + inputFC
@@ -198,7 +204,7 @@ def SnapToNLCD(inputFC, iRaster):
 
         if 'foot' in theUnits.lower():
             theUnits = "feet"
-        
+
         elif theUnits.lower() == "meter":
             theUnits = "meters"
 
@@ -214,7 +220,7 @@ def SnapToNLCD(inputFC, iRaster):
         # Puerto Rico 3092415, -78975 (CONUS works for both)
 
         if theUnits != "meters":
-            PrintMsg("Projected coordinate system is " + inputSRName + "; units = '" + theUnits + "'", 0)
+            PrintMsg("Projected Coordinate System is " + inputSRName + "; units = '" + theUnits + "'", 0)
             raise MyError, "Unable to align raster output with this coordinate system :)"
 
         elif inputSRName in ["Albers_Conical_Equal_Area", "USA_Contiguous_Albers_Equal_Area_Conic_USGS_version", "NAD_1983_Contiguous_USA_Albers"]:
@@ -266,11 +272,11 @@ def SnapToNLCD(inputFC, iRaster):
                 raise MyError, "Input featureclass and snapraster have different coordinate systems"
 
 
-        pExtent = theDesc.extent  # Input featureclass extent
-        x1 = float(pExtent.XMin)
-        y1 = float(pExtent.YMin)
-        x2 = float(pExtent.XMax)
-        y2 = float(pExtent.YMax)
+##        pExtent = theDesc.extent  # Input featureclass extent
+##        x1 = float(pExtent.XMin)
+##        y1 = float(pExtent.YMin)
+##        x2 = float(pExtent.XMax)
+##        y2 = float(pExtent.YMax)
 
         # Round off coordinates to integer values based upon raster resolution
         # Use +- 5 meters to align with NLCD
@@ -281,7 +287,7 @@ def SnapToNLCD(inputFC, iRaster):
         #iRaster = int(iRaster)
 
         # Calculate number of columns difference between KS NLCD and the input extent
-        # Align with the proper coordinate pair
+        # Align with the proper coordinate pair.
 
         iCol = int((x1 - xNLCD) / 30)
         iRow = int((y1 - yNLCD) / 30)
@@ -296,11 +302,13 @@ def SnapToNLCD(inputFC, iRaster):
         y2 = numRows * 30 + y1
 
         theExtent = str(x1) + " " + str(y1) + " " + str(x2) + " " + str(y2)
+
         # Format coordinate pairs as string
         sX1 = Number_Format(x1, 0, True)
         sY1 = Number_Format(y1, 0, True)
         sX2 = Number_Format(x2, 0, True)
         sY2 = Number_Format(y2, 0, True)
+
         sLen = 11
         sX1 = ((sLen - len(sX1)) * " ") + sX1
         sY1 = " X " + ((sLen - len(sY1)) * " ") + sY1
@@ -596,7 +604,7 @@ def AdjustExtent(beginExtent, theDesc, iRaster):
             # WGS 1984 Albers for PAC Basin area
             xNLCD = -2390975
             yNLCD = -703265
-            
+
         else:
             PrintMsg("Projected coordinate system is " + inputSRName + "; units = '" + theUnits + "'", 0)
             raise MyError, "Unable to align raster output with this coordinate system"
@@ -1063,7 +1071,7 @@ def UpdateMetadata(gdb, target, surveyInfo, iRaster):
         if not arcpy.Exists(target):
             raise MyError, "Missing xml file to import as metadata: " + target
 
-        PrintMsg(" \nUpdating metadata for " + target + " using file: " + mdImport, 1)
+        PrintMsg(" \nUpdating metadata for " + target + " using file: " + mdImport)
         arcpy.ImportMetadata_conversion(mdImport, "FROM_FGDC", target, "DISABLED")  # Tool Validate problem here
         #arcpy.MetadataImporter_conversion(target, mdImport) # Try this alternate tool with Windows 10.
 
@@ -1112,7 +1120,8 @@ def CheckSpatialReference(inputFC):
                 raise MyError, os.path.basename(gdb) + ": Input soil polygon layer does not have a valid coordinate system for gSSURGO"
 
         else:
-            raise MyError, os.path.basename(gdb) + ": Input soil polygon layer must have a projected coordinate system"
+            return False
+            #raise MyError, os.path.basename(gdb) + ": Input soil polygon layer must have a projected coordinate system"
 
     except MyError, e:
         # Example: raise MyError, "This is an error message"
@@ -1158,48 +1167,55 @@ def ConvertToRaster(gdb, mupolygonFC, iRaster, bTiled, bOverwriteTiles):
 
         # Check input layer's coordinate system to make sure horizontal units are meters
         # set the output coordinate system for the raster (neccessary for PolygonToRaster)
-        #if CheckSpatialReference(inputFC) == False:
+        bArcSeconds = False
+        if CheckSpatialReference(inputFC) == False:
+            arcSecs,bReturned = updateRasterCellSizetoDD(gdb,mupolygonFC,iRaster)
 
-        # ------------- added for Hawaii, American Samoa, PacBasin gSSURGO datasets -----------
-        # The FGDB inputFC will be in geographic but the muraster will be in a projected CRS.
-        desc = arcpy.Describe(inputFC)
-        inputSR = desc.spatialReference
-
-        if inputSR.type.upper() == "GEOGRAPHIC":
-            legendTable = os.path.join(gdb,"legend")
-            rootDir = os.path.dirname(sys.argv[0])
-            sr = arcpy.SpatialReference()  # generic spatial reference that will be populated depending on area
-
-            if arcpy.Exists(legendTable):
-
-                # isolate the areasymbol state
-                area = list(set([row[0][:2] for row in arcpy.da.SearchCursor(legendTable,"areasymbol")]))[0]
-
-                # PCRS = 'Western_Pacific_Albers_Equal_Area_Conic'
-                if area in ('FM','GU','MH','MP','PW'):
-                    prjFile = os.path.join(rootDir,'PCRS_Western_Pacific_Albers_Equal_Area_Conic.prj')
-
-                # PCRS = 'Hawaii_Albers_Equal_Area_Conic'
-                elif area in ('AS','HI'):
-                    prjFile = os.path.join(rootDir,'PCRS_Hawaii_Albers_Equal_Area_Conic.prj')
-
-                else:
-                    raise MyError, os.path.basename(gdb) + ": Input soil polygon layer does not have a valid coordinate system for gSSURGO"
-                    return False
-
-                with open(prjFile) as f:
-                    prj = f.readlines()
-                sr.loadFromString(prj)
-
-                tempMUPOLYGON = arcpy.CreateScratchName("tempMUPOLYGON",data_type="FeatureClass",workspace=env.scratchGDB)
-                arcpy.Project_management(inputFC,tempMUPOLYGON,sr)
-                inputFC = tempMUPOLYGON
-                bGeoReferenceSys = True
-                PrintMsg("\nSpatial Reference of output Raster will be " + str(sr.name) + "\n",1)
-
-            else:
-                raise MyError, os.path.basename(gdb) + ": Input soil polygon layer does not have a valid coordinate system for gSSURGO"
+            if not bReturned:
                 return False
+            else:
+                bArcSeconds = True
+
+##        # ------------- added for Hawaii, American Samoa, PacBasin gSSURGO datasets -----------
+##        # The FGDB inputFC will be in geographic but the muraster will be in a projected CRS.
+##        desc = arcpy.Describe(inputFC)
+##        inputSR = desc.spatialReference
+##
+##        if inputSR.type.upper() == "GEOGRAPHIC":
+##            legendTable = os.path.join(gdb,"legend")
+##            rootDir = os.path.dirname(sys.argv[0])
+##            sr = arcpy.SpatialReference()  # generic spatial reference that will be populated depending on area
+##
+##            if arcpy.Exists(legendTable):
+##
+##                # isolate the areasymbol state
+##                area = list(set([row[0][:2] for row in arcpy.da.SearchCursor(legendTable,"areasymbol")]))[0]
+##
+##                # PCRS = 'Western_Pacific_Albers_Equal_Area_Conic'
+##                if area in ('FM','GU','MH','MP','PW'):
+##                    prjFile = os.path.join(rootDir,'PCRS_Western_Pacific_Albers_Equal_Area_Conic.prj')
+##
+##                # PCRS = 'Hawaii_Albers_Equal_Area_Conic'
+##                elif area in ('AS','HI'):
+##                    prjFile = os.path.join(rootDir,'PCRS_Hawaii_Albers_Equal_Area_Conic.prj')
+##
+##                else:
+##                    raise MyError, os.path.basename(gdb) + ": Input soil polygon layer does not have a valid coordinate system for gSSURGO"
+##                    return False
+##
+##                with open(prjFile) as f:
+##                    prj = f.readlines()
+##                sr.loadFromString(prj)
+##
+##                tempMUPOLYGON = arcpy.CreateScratchName("tempMUPOLYGON",data_type="FeatureClass",workspace=env.scratchGDB)
+##                arcpy.Project_management(inputFC,tempMUPOLYGON,sr)
+##                inputFC = tempMUPOLYGON
+##                bGeoReferenceSys = True
+##                PrintMsg("\nSpatial Reference of output Raster will be " + str(sr.name) + "\n",1)
+##
+##            else:
+##                raise MyError, os.path.basename(gdb) + ": Input soil polygon layer does not have a valid coordinate system for gSSURGO"
+##                return False
 
         # Need to check for dashes or spaces in folder names or leading numbers in database or raster names
 
@@ -1215,7 +1231,6 @@ def ConvertToRaster(gdb, mupolygonFC, iRaster, bTiled, bOverwriteTiles):
 
         PrintMsg(" \nBeginning raster conversion process for " + outputRaster, 0)
         inputSA = os.path.join(gdb, "SAPOLYGON")
-
 
         # For rasters named using an attribute value, some attribute characters can result in
         # 'illegal' names.
@@ -1235,7 +1250,6 @@ def ConvertToRaster(gdb, mupolygonFC, iRaster, bTiled, bOverwriteTiles):
 
 
         # Create Lookup table for storing MUKEY values and their integer counterparts
-        #
         if bTiled in ["Large", "Small"]:
             lu = os.path.join(gdb, "Lookup")
 
@@ -1340,19 +1354,16 @@ def ConvertToRaster(gdb, mupolygonFC, iRaster, bTiled, bOverwriteTiles):
         # Add MUKEY attribute index to Lookup table
         arcpy.AddIndex_management(lu, ["mukey"], "Indx_LU")
 
-        #
         # End of Lookup table code
-
         # Match NLCD raster (snapraster)
 
         # Set output extent
         fullExtent = SnapToNLCD(inputFC, iRaster)
 
         # Raster conversion process...
-        #
         if bTiled in ["Large", "Small"]:
+
             # Tiled raster process...
-            #
             PrintMsg(" \n\tCreating " + Number_Format(len(tileList), 0, True) + " raster tiles from " + os.path.join(os.path.basename(os.path.dirname(inputFC)), os.path.basename(inputFC)) + " featureclass", 0)
             PrintMsg(" \n\tOutput location for raster tiles: " + tmpFolder, 0)
 
@@ -1468,8 +1479,11 @@ def ConvertToRaster(gdb, mupolygonFC, iRaster, bTiled, bOverwriteTiles):
             else:
                 priorityFld = "LOOKUP." + pFldName
 
-            #arcpy.PolygonToRaster_conversion(tmpPolys, "Lookup.CELLVALUE", outputRaster, "CELL_CENTER", priorityFld, iRaster) # No priority field for single raster
-            arcpy.PolygonToRaster_conversion(tmpPolys, "Lookup.CELLVALUE", outputRaster, "CELL_CENTER", "#", iRaster) # No priority field for single raster
+            if bArcSeconds:
+                arcpy.PolygonToRaster_conversion(tmpPolys, "Lookup.CELLVALUE", outputRaster, "CELL_CENTER", "#", arcSecs) # No priority field for single raster
+            else:
+                #arcpy.PolygonToRaster_conversion(tmpPolys, "Lookup.CELLVALUE", outputRaster, "CELL_CENTER", priorityFld, iRaster) # No priority field for single raster
+                arcpy.PolygonToRaster_conversion(tmpPolys, "Lookup.CELLVALUE", outputRaster, "CELL_CENTER", "#", iRaster) # No priority field for single raster
 
             # immediately delete temporary polygon layer to free up memory for the rest of the process
             time.sleep(1)
@@ -1525,7 +1539,7 @@ def ConvertToRaster(gdb, mupolygonFC, iRaster, bTiled, bOverwriteTiles):
             # Build attribute table for final output raster. Sometimes it fails to automatically build.
             PrintMsg("\tBuilding raster attribute table and updating MUKEY values", )
             arcpy.SetProgressor("default", "Building raster attrribute table...")
-            PrintMsg(outputRaster)
+            #PrintMsg(outputRaster)
             arcpy.BuildRasterAttributeTable_management(outputRaster)
 
             # Add MUKEY values to final mapunit raster
@@ -1638,6 +1652,81 @@ def ConvertToRaster(gdb, mupolygonFC, iRaster, bTiled, bOverwriteTiles):
         errorMsg()
         return False
         arcpy.CheckInExtension("Spatial")
+
+## ===================================================================================
+def updateRasterCellSizetoDD(gdb, mupolygonFC, iRaster):
+    # This function will convert the user-chosen cell size of gSSURGO to arc seconds if the
+    # input mupolygonFC is GCS and the state dataset is Hawaii or PacBasin.
+    # The arc seconds were determined using the following site: https://www.opendem.info/arc2meters.html
+    # In order to calculate cell size in degrees, the site requires a latitude.  Latitude for the following
+    # datasets were calculated using: ((extent.YMax - extent.YMin) / 2) + extent.YMin
+    # AS - -14.264608473499926
+    # FM - 7.646294464500064
+    # GU - 13.44421957250005
+    # HI - 20.572975150500056
+    # MH - 7.3927841790000024
+    # MP - 16.46183145550006
+    # PW - 5.5330257480000675
+    # This function will return the cell size in degrees and True if succeeded correctly;
+    # otherwise the original cell size and False are returned.
+
+    try:
+
+        inputFC = os.path.join(gdb, mupolygonFC)
+        desc = arcpy.Describe(inputFC)
+        sr = desc.spatialReference
+        inputSRName = sr.name
+
+        if sr.type == 'Geographic':
+            theUnits = sr.angularUnitName
+        else:
+            theUnits = sr.linearUnitName
+
+        # Dictionary capturing the arc second representation of a 5M, 10M, 30M and 90M respectively
+        # for GCS purposes.  Only used for HI and PacBasin Territory.
+        metersToDegreesFactor = dict()
+        metersToDegreesFactor['AS'] = [0.00004642785856792031,0.00009285571713584062,0.0002785671514075219,0.0008357014542225657]
+        metersToDegreesFactor['FM'] = [0.00004540008170811574,0.00009080016341623149,0.0002724004902486945,0.0008172014707460834]
+        metersToDegreesFactor['GU'] = [0.000046264190350812155,0.00009252838070162431,0.0002775851421048729,0.0008327554263146187]
+        metersToDegreesFactor['HI'] = [0.00004806150418051923,0.00009612300836103847,0.0002883690250831154,0.0008651070752493462]
+        metersToDegreesFactor['MH'] = [0.00004537357379065016,0.00009074714758130032,0.00027224144274390095,0.0008167243282317028]
+        metersToDegreesFactor['MP'] = [0.0000469196986180172,0.0000938393972360344,0.0002815181917081032,0.0008445545751243095]
+        metersToDegreesFactor['PW'] = [0.000045207029478250843,0.00009041405895650169,0.0002712421768695051,0.0008137265306085153]
+
+        validCellSizes = [5,10,30,90]
+
+        if sr.type.upper() == "GEOGRAPHIC":
+            legendTable = os.path.join(gdb,"legend")
+            sr = arcpy.SpatialReference()  # generic spatial reference that will be populated depending on area
+
+            if arcpy.Exists(legendTable):
+
+                # isolate the areasymbol state
+                area = list(set([row[0][:2] for row in arcpy.da.SearchCursor(legendTable,"areasymbol")]))[0]
+
+                # get cell size in arc seconds
+                if area in ('FM','GU','MH','MP','PW','AS','HI'):
+                    degreePosition = validCellSizes.index(iRaster)
+                    degreeCellSize = metersToDegreesFactor[area][degreePosition]
+                    PrintMsg(" \nGeographic Coordinate System is " + inputSRName + "; units = '" + theUnits + "'")
+                    PrintMsg(" \tRaster cell size will be " + str(degreeCellSize) + " Degrees (" + str(iRaster) + " Meters)")
+                    return degreeCellSize,True
+
+                else:
+                    PrintMsg("Could not determine Degrees for " + mupolygonFC + ". Dataset is not part of Hawaii or PacBasin")
+                    return iRaster,False
+
+            else:
+                PrintMsg("Could not determine Degrees for " + mupolygonFC + ". b/c legend table is missing.")
+                return iRaster,False
+
+        else:
+            return iRaster,False
+
+    except:
+        errorMsg()
+        return iRaster,False
+
 
 ## ===================================================================================
 ## ===================================================================================

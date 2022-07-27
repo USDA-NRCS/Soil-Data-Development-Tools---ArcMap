@@ -75,7 +75,9 @@
 # 2020-03-30. Removed the above columns from the ImportTables function as well.
 
 # 2021-11-30. Modified gSSURGO function to handle multiple SSURGO download naming conventions. - AD
-#
+
+# 2022-7-27. Updated the alias parameter passed from the gSSURGO function to the CreateSSURGO_DB
+#            function.  Specifically, added the state and YYYYMM that the gSSURGO DB was created.
 
 
 ## ===================================================================================
@@ -2639,8 +2641,11 @@ def gSSURGO(inputFolder, surveyList, outputWS, AOI, tileInfo, useTextFiles, bCli
                 description = tileInfo[1]
 
             else:
-                # Try leaving the aliasname off of the regular layers.
-                aliasName = tileInfo[0]
+                # Set the alias name to State_YYYYMM
+                d = datetime.date.today()
+                yearMonth = d.strftime('%Y%m')
+
+                aliasName = tileInfo[0] + "_" + str(yearMonth)
                 description = tileInfo[1]
 
         else:
@@ -2653,9 +2658,8 @@ def gSSURGO(inputFolder, surveyList, outputWS, AOI, tileInfo, useTextFiles, bCli
             else:
                 description = tileInfo
 
-        aliasName = ""
-
-        #PrintMsg(" \nAlias and description: " + aliasName + "; " +  description, 1)
+        # Steve, why did you reset the alias name here after declaring above?
+        # aliasName = ""
 
         # Get the XML Workspace Document appropriate for the specified AOI
         inputXML = GetXML(AOI)
