@@ -102,6 +102,31 @@
 # 4 0 255 0
 # 5 0 0 255
 
+# 2022-12-15 (by AKS) Issue with floolding frequency in SDVattribute table with 
+# 2023 SSURGO, for attributekey 12 (Flooding Frequency Class)
+# the tiebreakerdomainname is incorrectly set to Null
+# and needs to be set to flooding_frequency_class. Added floodBandaid function
+# to correctly populate these records in the sdvattribute table.
+# Also, parentheses in SQL queries in the sqlwhereclause field of sdvattribute table
+# is causing errors downstream. floadBandaid changes three queires to work without
+# parenthese. 
+# Also in the GetSDVatts function there was an error with concatenating the sql
+# query from the sqlwhereclause. It assumed only one '=' would be present. Reconfigured
+# to format more complex sql queries.
+# Commented out stray reference to variable dCase in AggregateCo_Mo_DCD_Domain
+# function
+
+# 2023-01-05 There are 14 sdvattributes that come from the component level that
+# are flagged as both Map unit and Component level attributes which routes them
+# via the Aggregate1 function. This resulted in 
+# these attributes not being aggregated, but rather a many to one result. Within 
+# CreateSoilMap function I swapped an "or" for "and" such that attributes that 
+# are flagged as both component and map unit are aggregated by the approprieate 
+# component level aggregation function.
+# For dominant condition property attributes changed condition 
+# sdvAtt.startswith("Surface") or sdvAtt.endswith("(Surface)") -> "SURFACE" in sdvAtt
+# it was erroring out Soil Health - Surface Texture
+
 ## ===================================================================================
 class MyError(Exception):
     pass
@@ -137,7 +162,45 @@ def PrintMsg(msg, severity=0):
 
     except:
         pass
-
+## ===================================================================================
+def floodBandaid(sdvattTable):
+    ''' This function is a bandaid to fix conflicts within the sdvattribute table'''
+    
+    sdvView = 'sdvView'
+    # Verify that there are Null tiebreakdomainname for type 12
+    q = "attributekey = 12 AND tiebreakdomainname IS NULL"
+    arcpy.management.MakeTableView(sdvattTable, sdvView)
+    arcpy.management.SelectLayerByAttribute(sdvView, "NEW_SELECTION", q)
+    # If there are Null entries, populate them with flooding_frequency_class
+    nullCount = arcpy.management.GetCount(sdvView)
+    if int(nullCount[0]):
+        arcpy.CalculateField_management(sdvView, 
+                                        "tiebreakdomainname", 
+                                        "'flooding_frequency_class'", 
+                                        "PYTHON_9.3")
+        arcpy.AddMessage('sdvattribute Tie Breaker Domain Name was not poppulated for flooding frequency, now amended.')
+    # For some reason queries with parens are causing errors.
+    q = "sqlwhereclause = '(coecoclass.ecoclasstypename = ''NRCS Rangeland Site'' or coecoclass.ecoclasstypename = ''NRCS Forestland Site'')'"
+    arcpy.management.SelectLayerByAttribute(sdvView, "NEW_SELECTION", q)
+    nullCount = arcpy.management.GetCount(sdvView)
+    if int(nullCount[0]):
+        arcpy.CalculateField_management(sdvView,
+                                        "sqlwhereclause",
+                                        '''"coecoclass.ecoclasstypename = 'NRCS Rangeland Site' or coecoclass.ecoclasstypename = 'NRCS Forestland Site'"''',
+                                        "PYTHON_9.3")
+        arcpy.AddMessage('Amended SQL queries with parentheses in sdvattribute EcoStieNm and EcoSiteID')
+    
+    q = "sqlwhereclause = 'corestrictions.reskind IN (''Densic bedrock'', ''Paralithic bedrock'', ''Lithic bedrock'')'"
+    arcpy.management.SelectLayerByAttribute(sdvView, "NEW_SELECTION", q)
+    nullCount = arcpy.management.GetCount(sdvView)
+    if int(nullCount[0]):
+        arcpy.CalculateField_management(sdvView,
+                                        "sqlwhereclause",
+                                        '''"corestrictions.reskind ='Densic bedrock' OR  corestrictions.reskind ='Paralithic bedrock' OR corestrictions.reskind ='Lithic bedrock'"''',
+                                        "PYTHON_9.3")
+        arcpy.AddMessage('Amended SQL queries with parentheses in sdvattribute Dep2BedRS')
+        
+        
 ## ===================================================================================
 def Number_Format(num, places=0, bCommas=True):
     try:
@@ -3264,7 +3327,7 @@ def CreateRasterMapLayer(inputLayer, outputTbl, outputLayer, outputLayerFile, ou
             PrintMsg(" \nCreating raster layer with join (" + tmpLayerFile +  ")", 1)
             PrintMsg("\tAttributeLogicalDatatype = " + dSDV["attributelogicaldatatype"].lower(), 1)
             PrintMsg("\tOutput Table Rating Field: " + dFieldInfo[dSDV["resultcolumnname"].upper()][0] + " (" + str(dFieldInfo[dSDV["resultcolumnname"].upper()][1]) + " wide)", 1)
-            PrintMsg("\tSymbology layer file: " + classLayerFile, 1)
+            # PrintMsg("\tSymbology layer file: " + classLayerFile, 1)
 
         symField = os.path.basename(outputTbl) + "." + dSDV["resultcolumnname"]
         tmpField = os.path.basename(fc) + "." + "SPATIALVER"
@@ -3635,7 +3698,9 @@ def GetSDVAtts(gdb, sdvAtt, aggMethod, tieBreaker, bFuzzy, sRV):
 
         if bVerbose:
             PrintMsg(" \nReading sdvattribute table into dSDV dictionary", 1)
-
+        # Call flooding Frequency bandaid
+        floodBandaid(sdvattTable)
+        
         with arcpy.da.SearchCursor(sdvattTable, "*", where_clause=sql1) as cur:
             rec = cur.next()  # just reading first record
             i = 0
@@ -3674,8 +3739,28 @@ def GetSDVAtts(gdb, sdvAtt, aggMethod, tieBreaker, bFuzzy, sRV):
 
         # Workaround for sql whereclause stored in sdvattribute table. File geodatabase is case sensitive.
         if dSDV["sqlwhereclause"] is not None:
-            sqlParts = dSDV["sqlwhereclause"].split("=")
-            dSDV["sqlwhereclause"] = 'UPPER("' + sqlParts[0] + '") = ' + sqlParts[1].upper()
+            parts1 = dSDV["sqlwhereclause"].split("=")
+            if len(parts1) == 2:
+                dSDV["sqlwhereclause"] = 'UPPER("' + parts1[0] + '") = ' + parts1[1].upper()
+            else:
+                parts2 = []
+                for part in parts1:
+                    if ('.' in part) and (' ' in part):
+                        subparts = part.split()
+                        subparts2 = []
+                        for subpart in subparts:
+                            if '.' in subpart:
+                                subparts2.append('''UPPER("{}")'''.format(subpart))
+                            else:
+                                subparts2.append("{}".format(subpart.upper()))
+                        parts2.append(' '.join(subparts2))
+                    elif '.' in part:
+                        parts2.append('''UPPER("{}")'''.format(part))
+                    else:
+                        parts2.append("{}".format(part.upper()))
+    
+                dSDV["sqlwhereclause"] = '='.join(parts2)
+            arcpy.AddMessage(dSDV["sqlwhereclause"])
 
         if dSDV["attributetype"].lower() == "interpretation" and bFuzzy == False and dSDV["notratedphrase"] is None:
             # Add 'Not rated' to choice list
@@ -6693,7 +6778,7 @@ def AggregateCo_Mo_DCD_Domain(gdb, sdvAtt, sdvFld, initialTbl, bZero, cutOff, ti
                         if not cokey in dComp:
 
                             if not rating is None:
-                                dCase[str(rating).upper()] = rating
+                                # dCase[str(rating).upper()] = rating
 
                                 if str(rating).upper() in dValues:
                                     #if mukey == '2780145':
@@ -9499,7 +9584,7 @@ def CreateSoilMap(inputLayer, sdvAtt, aggMethod, primCst, secCst, top, bot, begM
         global bVerbose
 
         bVerbose = False   # hard-coded boolean to print diagnostic messages
-        #bVerbose = True
+        # bVerbose = True
 
         # Value cache is a global variable used for fact function which is called by ColorRamp
         global fact_cache
@@ -10528,7 +10613,7 @@ def CreateSoilMap(inputLayer, sdvAtt, aggMethod, primCst, secCst, top, bot, begM
             # These are all Soil Properties
             # Added addtional logic for Minnesota Crop Index. It has a problem in that mapunitlevelattribflag is set to zero.
 
-            if dSDV["mapunitlevelattribflag"] == 1 or \
+            if dSDV["mapunitlevelattribflag"] == 1 and \
                (dSDV["mapunitlevelattribflag"] == 0 and dSDV["complevelattribflag"] == 0 \
                 and dSDV["cmonthlevelattribflag"] == 0 and dSDV["horzlevelattribflag"] == 0 ) :
                 # This is a Map unit Level Soil Property or it is Minnesota Crop Index in the MUTEXT table
@@ -10687,8 +10772,9 @@ def CreateSoilMap(inputLayer, sdvAtt, aggMethod, primCst, secCst, top, bot, begM
                             raise MyError, "9. Aggregation method has not yet been developed (" + dSDV["algorithmname"] + ", " + dSDV["horzaggmeth"] + ")"
 
                     elif aggMethod == "Dominant Condition":
-
-                        if sdvAtt.startswith("Surface") or sdvAtt.endswith("(Surface)"):
+                        arcpy.AddMessage("in DCD: " + sdvAtt)
+                        arcpy.AddMessage("Choice: " + dSDV["effectivelogicaldatatype"])
+                        if "Surface" in sdvAtt:
                             if dSDV["effectivelogicaldatatype"].lower() == "choice":
                                 if bVerbose:
                                     PrintMsg(" \nDominant condition for surface-level attribute", 1)
@@ -11263,7 +11349,8 @@ try:
 
         # Get active data frame object
         df = mxd.activeDataFrame
-
+        # Call Flood bandaid function
+        arcpy.AddMessage("version aks 20230106")
         bSoilMap = CreateSoilMap(inputLayer, sdvAtt, aggMethod, primCst, secCst, top, bot, begMo, endMo, tieBreaker, bZero, cutOff, bFuzzy, sRV, "", mxd, df.name)
         PrintMsg("", 0)
 
