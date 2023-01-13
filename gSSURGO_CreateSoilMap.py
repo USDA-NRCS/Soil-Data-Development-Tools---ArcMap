@@ -10613,9 +10613,14 @@ def CreateSoilMap(inputLayer, sdvAtt, aggMethod, primCst, secCst, top, bot, begM
             # These are all Soil Properties
             # Added addtional logic for Minnesota Crop Index. It has a problem in that mapunitlevelattribflag is set to zero.
 
-            if dSDV["mapunitlevelattribflag"] == 1 and \
-               (dSDV["mapunitlevelattribflag"] == 0 and dSDV["complevelattribflag"] == 0 \
-                and dSDV["cmonthlevelattribflag"] == 0 and dSDV["horzlevelattribflag"] == 0 ) :
+            if (dSDV["mapunitlevelattribflag"] == 1 and \
+                    (dSDV["complevelattribflag"] == 0 and \
+                    dSDV["cmonthlevelattribflag"] == 0 and \
+                    dSDV["horzlevelattribflag"] == 0 )) or \
+                (dSDV["mapunitlevelattribflag"] == 0 \
+                and dSDV["complevelattribflag"] == 0 \
+                and dSDV["cmonthlevelattribflag"] == 0 \
+                and dSDV["horzlevelattribflag"] == 0 ):
                 # This is a Map unit Level Soil Property or it is Minnesota Crop Index in the MUTEXT table
                 #PrintMsg("Map unit level, no aggregation neccessary", 1)
                 outputTbl, outputValues = Aggregate1(gdb, sdvAtt, dSDV["attributecolumnname"].upper(), initialTbl, bZero, cutOff, tieBreaker)
@@ -11350,7 +11355,7 @@ try:
         # Get active data frame object
         df = mxd.activeDataFrame
         # Call Flood bandaid function
-        arcpy.AddMessage("version aks 20230106")
+        arcpy.AddMessage("version aks 20230112")
         bSoilMap = CreateSoilMap(inputLayer, sdvAtt, aggMethod, primCst, secCst, top, bot, begMo, endMo, tieBreaker, bZero, cutOff, bFuzzy, sRV, "", mxd, df.name)
         PrintMsg("", 0)
 
